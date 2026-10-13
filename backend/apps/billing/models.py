@@ -23,9 +23,11 @@ class Payment(models.Model):
     )
 
     payment_reference = models.CharField(
-        max_length=100,
-        unique=True
-    )
+    max_length=100,
+    unique=True,
+    null=True,
+    blank=True
+)
 
     amount = models.DecimalField(
         max_digits=12,

@@ -475,6 +475,7 @@ export default function Users() {
                 <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                   <tr>
                     <th className="px-5 py-3 font-semibold">User</th>
+                    <th className="px-5 py-3 font-semibold">Email</th>
                     <th className="px-5 py-3 font-semibold">Role</th>
                     <th className="px-5 py-3 font-semibold">Status</th>
                     <th className="px-5 py-3 font-semibold">Created</th>
@@ -485,14 +486,17 @@ export default function Users() {
                 <tbody className="divide-y divide-slate-100">
                   {users.map((user) => (
                     <tr key={user.id} className="hover:bg-slate-50/70">
-                      <td className="px-5 py-4">
-                        <p className="font-semibold text-slate-800">
-                          {user.name}
-                        </p>
-                        <p className="mt-1 text-xs text-slate-500">
-                          {user.email}
-                        </p>
-                      </td>
+                     
+                  <td className="px-5 py-4">
+                    <p className="font-semibold text-slate-800">
+                       {user.name}
+                    </p>
+                  </td>
+
+                    <td className="px-5 py-4 text-slate-600">
+                      {user.email || "—"}
+                  </td>
+
 
                       <td className="px-5 py-4">
                         <span className="inline-flex rounded-md bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
@@ -556,11 +560,7 @@ export default function Users() {
           )}
         </section>
 
-        <p className="text-xs leading-5 text-slate-500">
-          Note: Summary counts reflect the users currently loaded from the API.
-          Destructive actions are protected by confirmation prompts and must
-          also be enforced by the backend.
-        </p>
+        
       </div>
     </div>
   );

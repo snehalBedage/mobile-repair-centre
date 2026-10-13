@@ -61,6 +61,18 @@ class CustomerSerializer(serializers.ModelSerializer):
 
         return customer
 
+
+class CustomerProfileSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Customer
+        fields = [
+            'name',
+            'mobile',
+            'address',
+        ]
+
+
 class DeviceSerializer(serializers.ModelSerializer):
 
     class Meta:

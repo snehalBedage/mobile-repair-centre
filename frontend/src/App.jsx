@@ -24,6 +24,12 @@ import Payments from "./pages/Payments";
 import Warranties from "./pages/Warranties";
 import Reports from "./pages/Reports";
 import Users from "./pages/Users";
+import AuditLogs from "./pages/AuditLogs";
+import MyDevices from "./pages/MyDevices";
+import MyRepairs from "./pages/MyRepairs";
+import MyEstimates from "./pages/MyEstimates";
+import MyPayments from "./pages/MyPayments";
+import MyWarranties from "./pages/MyWarranties";
 
 import ProtectedRoute from "./routes/ProtectedRoute";
 import RoleLayout from "./layouts/RoleLayout";
@@ -121,6 +127,16 @@ function App() {
               </ProtectedRoute>
             }
           />
+
+          {/* ADMIN ONLY AUDIT LOGS */}
+          <Route
+            path="/audit-logs"
+            element={
+              <ProtectedRoute allowedRoles={["ADMIN"]}>
+                <AuditLogs />
+              </ProtectedRoute>
+            }
+          />
         </Route>
 
         {/* CUSTOMER LAYOUT */}
@@ -135,6 +151,18 @@ function App() {
             path="/customer-dashboard"
             element={<CustomerDashboard />}
           />
+          <Route path="/my-estimates" element={<MyEstimates />} />
+          <Route path="/my-payments" element={<MyPayments />} />
+          <Route path="/my-warranties" element={<MyWarranties />} />
+          <Route
+  path="/my-devices"
+  element={<MyDevices />}
+/>
+
+          <Route
+  path="/my-repairs"
+  element={<MyRepairs />}
+/>
         </Route>
       </Routes>
     </BrowserRouter>

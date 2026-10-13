@@ -8,6 +8,7 @@ const EMPTY_FORM = {
   amount: "",
   payment_method: "CASH",
   payment_date: "",
+  payment_status: "PENDING",
 };
 
 const INPUT_CLASS =
@@ -44,6 +45,9 @@ const formatAmount = (value) =>
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
+
+const formatPaymentId = (id) =>
+  `PAY-${String(id).padStart(5, "0")}`;
 
 const getJobId = (payment) => {
   if (payment.job_card && typeof payment.job_card === "object") {
@@ -113,10 +117,12 @@ function SummaryCard({ title, value, description }) {
 export default function Payments() {
   const [payments, setPayments] = useState([]);
   const [jobCards, setJobCards] = useState([]);
+  const [billingSummaries, setBillingSummaries] = useState({});
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [downloadingId, setDownloadingId] = useState(null);
+  const [updatingPaymentId, setUpdatingPaymentId] = useState(null);
 
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -125,24 +131,93 @@ export default function Payments() {
 
   const [form, setForm] = useState(EMPTY_FORM);
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    setError("");
+ 
 
-    try {
-      const [paymentResponse, jobResponse] = await Promise.all([
-        api.get("billing/payments/"),
-        api.get("job-cards/"),
-      ]);
+const completedJobCards = useMemo(
+  () =>
+    jobCards.filter((job) => {
+      if (job.status !== "COMPLETED") {
+        return false;
+      }
 
-      setPayments(getList(paymentResponse.data));
-      setJobCards(getList(jobResponse.data));
-    } catch (err) {
-      setError(getErrorMessage(err));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+      const summary = billingSummaries[job.id];
+
+      if (!summary || summary.remaining_amount == null) {
+        return false;
+      }
+
+      const remainingAmount = Number(summary.remaining_amount);
+
+      if (!Number.isFinite(remainingAmount) || remainingAmount <= 0) {
+        return false;
+      }
+
+      const jobPayments = payments.filter(
+        (payment) =>
+          Number(getJobId(payment)) === Number(job.id)
+      );
+
+      const hasPendingPayment = jobPayments.some(
+        (payment) => payment.payment_status === "PENDING"
+      );
+
+      
+      if (hasPendingPayment) {
+        return false;
+      }
+
+      return true;
+    }),
+  [jobCards, payments, billingSummaries]
+);
+
+ 
+const loadData = useCallback(async () => {
+  setLoading(true);
+  setError("");
+
+  try {
+    const [paymentResponse, jobResponse] = await Promise.all([
+      api.get("billing/payments/"),
+      api.get("job-cards/"),
+    ]);
+
+    const loadedPayments = getList(paymentResponse.data);
+    const loadedJobCards = getList(jobResponse.data);
+
+    setPayments(loadedPayments);
+    setJobCards(loadedJobCards);
+
+    const completedJobs = loadedJobCards.filter(
+      (job) => job.status === "COMPLETED"
+    );
+
+    const summaryResults = await Promise.all(
+      completedJobs.map(async (job) => {
+        try {
+          const response = await api.get(
+            `billing/job-cards/${job.id}/`
+          );
+
+          return [job.id, response.data];
+        } catch {
+          return [job.id, null];
+        }
+      })
+    );
+
+    setBillingSummaries(
+      Object.fromEntries(
+        summaryResults.filter(([, summary]) => summary !== null)
+      )
+    );
+  } catch (err) {
+    setError(getErrorMessage(err));
+  } finally {
+    setLoading(false);
+  }
+}, []);
+
 
   useEffect(() => {
     loadData();
@@ -155,9 +230,11 @@ export default function Payments() {
 
     return payments.filter((payment) => {
       const jobNumber = getJobNumber(getJobId(payment), jobCards);
+      const formattedId = formatPaymentId(payment.id).toLowerCase();
 
       return (
         String(payment.id).includes(term) ||
+        formattedId.includes(term) ||
         String(payment.payment_reference || "")
           .toLowerCase()
           .includes(term) ||
@@ -198,6 +275,7 @@ export default function Payments() {
     setShowForm(false);
     setForm(EMPTY_FORM);
     setError("");
+    setSuccess("");
   };
 
   const handleCreatePayment = async (event) => {
@@ -205,13 +283,16 @@ export default function Payments() {
     setError("");
     setSuccess("");
 
+    
     if (
       !form.job_card ||
-      !form.payment_reference.trim() ||
+      (form.payment_method !== "CASH" &&
+      !form.payment_reference.trim()) ||
       !form.amount ||
       !form.payment_method ||
       !form.payment_date
     ) {
+
       setError("Please fill in all required payment fields.");
       return;
     }
@@ -224,12 +305,15 @@ export default function Payments() {
     }
 
     const jobCardId = Number(form.job_card);
-    const selectedJob = jobCards.find(
+
+    const selectedJob = completedJobCards.find(
       (job) => Number(job.id) === jobCardId
     );
 
     if (!selectedJob) {
-      setError("Please select a valid Job Card.");
+      setError(
+        "Payment can only be recorded for a COMPLETED Job Card."
+      );
       return;
     }
 
@@ -245,13 +329,19 @@ export default function Payments() {
     try {
       await api.post("billing/payments/", {
         job_card: jobCardId,
-        payment_reference: form.payment_reference.trim(),
+        payment_reference:
+          form.payment_method === "CASH"
+           ? null
+            : form.payment_reference.trim(),
         amount: amount.toFixed(2),
         payment_method: form.payment_method,
         payment_date: paymentDate.toISOString(),
       });
 
-      setSuccess("Payment recorded successfully. Status is managed by the backend.");
+      setSuccess(
+        "Payment record created successfully. Please verify its status in Payment History."
+      );
+
       setForm(EMPTY_FORM);
       setShowForm(false);
 
@@ -299,11 +389,47 @@ export default function Payments() {
       setDownloadingId(null);
     }
   };
+const handleUpdatePaymentStatus = async (payment, newStatus) => {
+  setError("");
+  setSuccess("");
+
+  if (payment.payment_status !== "PENDING") {
+    setError("Only pending payments can be updated.");
+    return;
+  }
+
+  const confirmed = window.confirm(
+    newStatus === "PAID"
+      ? "Have you verified that this payment was received?"
+      : "Are you sure you want to mark this payment as failed?"
+  );
+
+  if (!confirmed) return;
+
+  setUpdatingPaymentId(payment.id);
+
+  try {
+    await api.patch(`billing/payments/${payment.id}/`, {
+      payment_status: newStatus,
+    });
+
+    setSuccess(
+      newStatus === "PAID"
+        ? "Payment confirmed successfully."
+        : "Payment marked as failed."
+    );
+
+    await loadData();
+  } catch (err) {
+    setError(getErrorMessage(err));
+  } finally {
+    setUpdatingPaymentId(null);
+  }
+};
 
   return (
     <div className="min-h-screen bg-slate-50 p-4 sm:p-6 lg:p-8">
       <div className="mx-auto max-w-7xl space-y-6">
-
         {/* Page Header */}
         <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -368,7 +494,7 @@ export default function Payments() {
           />
         </section>
 
-        {/* Separate Payment Form Card */}
+        {/* Payment Form */}
         {showForm && (
           <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
             <div className="mb-5">
@@ -382,7 +508,6 @@ export default function Payments() {
 
             <form onSubmit={handleCreatePayment} className="space-y-5">
               <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
-
                 <div>
                   <label
                     htmlFor="job_card"
@@ -397,26 +522,28 @@ export default function Payments() {
                     value={form.job_card}
                     onChange={handleFormChange}
                     required
+                    disabled={loading || completedJobCards.length === 0}
                     className={INPUT_CLASS}
                   >
                     <option value="">Select Job Card</option>
 
-                    {jobCards.map((job) => (
+                    {completedJobCards.map((job) => (
                       <option key={job.id} value={job.id}>
-                        {job.job_card_number || `Job Card ${job.id}`}
-                        {job.status ? ` — ${job.status.replaceAll("_", " ")}` : ""}
+                        {job.job_card_number || `Job Card ${job.id}`} — COMPLETED
                       </option>
                     ))}
                   </select>
 
-                  {jobCards.length === 0 && !loading && (
+                  {completedJobCards.length === 0 && !loading && (
                     <p className="mt-1 text-xs text-amber-700">
-                      No Job Cards were returned by the API.
+                      No completed Job Cards are available for payment.
                     </p>
                   )}
                 </div>
-
-                <div>
+                
+                
+                {form.payment_method !== "CASH" && (
+                  <div>
                   <label
                     htmlFor="payment_reference"
                     className="mb-2 block text-sm font-medium text-slate-700"
@@ -429,17 +556,19 @@ export default function Payments() {
                     name="payment_reference"
                     type="text"
                     maxLength={100}
+                    minLength={12}
                     value={form.payment_reference}
                     onChange={handleFormChange}
                     placeholder="Enter unique transaction/reference ID"
                     required
                     className={INPUT_CLASS}
                   />
+
                   <p className="mt-1 text-xs text-slate-500">
                     This reference must be unique.
                   </p>
                 </div>
-
+                  )}
                 <div>
                   <label
                     htmlFor="amount"
@@ -490,7 +619,8 @@ export default function Payments() {
                     htmlFor="payment_date"
                     className="mb-2 block text-sm font-medium text-slate-700"
                   >
-                    Payment Date & Time <span className="text-red-500">*</span>
+                    Payment Date &amp; Time{" "}
+                    <span className="text-red-500">*</span>
                   </label>
 
                   <input
@@ -510,11 +640,11 @@ export default function Payments() {
                   </label>
 
                   <div className="flex min-h-[42px] items-center rounded-lg border border-slate-200 bg-slate-50 px-3">
-                    <span className="inline-flex rounded-full bg-green-100 px-2.5 py-1 text-xs font-semibold text-green-700">
-                      PAID
+                    <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700">
+                      PENDING
                     </span>
                     <span className="ml-2 text-xs text-slate-500">
-                      Set by backend
+                      Awaiting payment confirmation
                     </span>
                   </div>
                 </div>
@@ -523,7 +653,11 @@ export default function Payments() {
               <div className="flex flex-wrap gap-3 border-t border-slate-100 pt-5">
                 <button
                   type="submit"
-                  disabled={saving || loading || jobCards.length === 0}
+                  disabled={
+                    saving ||
+                    loading ||
+                    completedJobCards.length === 0
+                  }
                   className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {saving ? "Saving Payment..." : "Save Payment"}
@@ -542,7 +676,7 @@ export default function Payments() {
           </section>
         )}
 
-        {/* Separate Payment History + Search Card */}
+        {/* Payment History */}
         <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <div className="flex flex-col gap-4 border-b border-slate-200 p-5 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -567,7 +701,7 @@ export default function Payments() {
                 type="search"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Reference, Job Card, method or status..."
+                placeholder="Payment ID, reference, Job Card, method or status..."
                 className={INPUT_CLASS}
               />
             </div>
@@ -594,7 +728,7 @@ export default function Payments() {
                 <thead className="bg-slate-900 text-white">
                   <tr>
                     <th className="whitespace-nowrap px-4 py-3 text-left font-semibold text-white">
-                      #
+                      Payment ID
                     </th>
                     <th className="whitespace-nowrap px-4 py-3 text-left font-semibold text-white">
                       Payment Reference
@@ -615,6 +749,9 @@ export default function Payments() {
                       Status
                     </th>
                     <th className="whitespace-nowrap px-4 py-3 text-center font-semibold text-white">
+                      Actions
+                    </th>
+                    <th className="whitespace-nowrap px-4 py-3 text-center font-semibold text-white">
                       Receipt
                     </th>
                   </tr>
@@ -626,8 +763,8 @@ export default function Payments() {
                       key={payment.id}
                       className="transition hover:bg-slate-50"
                     >
-                      <td className="whitespace-nowrap px-4 py-4 text-slate-500">
-                        {payment.id}
+                      <td className="whitespace-nowrap px-4 py-4 font-semibold text-slate-700">
+                        {formatPaymentId(payment.id)}
                       </td>
 
                       <td className="whitespace-nowrap px-4 py-4 font-medium text-slate-800">
@@ -659,6 +796,33 @@ export default function Payments() {
                           {payment.payment_status || "—"}
                         </span>
                       </td>
+                      <td className="whitespace-nowrap px-4 py-4 text-center">
+  {payment.payment_status === "PENDING" ? (
+    <div className="flex flex-col gap-2">
+      <button
+        type="button"
+        onClick={() => handleUpdatePaymentStatus(payment, "PAID")}
+        disabled={updatingPaymentId === payment.id}
+        className="rounded-md bg-green-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-green-700 disabled:opacity-50"
+      >
+        {updatingPaymentId === payment.id
+          ? "Updating..."
+          : "Confirm Payment"}
+      </button>
+
+      <button
+        type="button"
+        onClick={() => handleUpdatePaymentStatus(payment, "FAILED")}
+        disabled={updatingPaymentId === payment.id}
+        className="rounded-md border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+      >
+        Mark Failed
+      </button>
+    </div>
+  ) : (
+    <span className="text-xs text-slate-400">No actions</span>
+  )}
+</td>
 
                       <td className="whitespace-nowrap px-4 py-4 text-center">
                         <button

@@ -60,3 +60,21 @@ export const getTechnicians = async () => {
   const response = await api.get("technicians/");
   return getResults(response.data);
 };
+
+
+/* Customer Profile */
+
+// Get logged-in customer's profile
+export const getMyProfile = async () => {
+  const response = await api.get("customers/my-profile/");
+  return response.data;
+};
+
+// Update logged-in customer's profile
+export const updateMyProfile = async (profileData) => {
+  const response = await api.patch(
+    "customers/my-profile/",
+    profileData
+  );
+  return response.data;
+};

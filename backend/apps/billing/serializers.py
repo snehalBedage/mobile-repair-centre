@@ -48,7 +48,6 @@ class PaymentSerializer(serializers.ModelSerializer):
 
         read_only_fields = [
             'id',
-            'payment_status',
             'created_at',
         ]
 
@@ -61,27 +60,93 @@ class PaymentSerializer(serializers.ModelSerializer):
 
         return value
 
+   
     def validate_payment_reference(self, value):
+
+        if value is None:
+            return None
 
         value = value.strip()
 
         if not value:
+            return None
+
+        if len(value) < 12:
             raise serializers.ValidationError(
-                "Payment reference cannot be empty."
+                "Payment reference must be at least 12 characters long."
+            )
+
+        if len(value) > 100:
+            raise serializers.ValidationError(
+                "Payment reference cannot exceed 100 characters."
+            )
+
+        queryset = Payment.objects.filter(
+            payment_reference=value
+        )
+
+        if self.instance:
+            queryset = queryset.exclude(
+                id=self.instance.id
+            )
+
+        if queryset.exists():
+            raise serializers.ValidationError(
+                "This payment reference already exists."
             )
 
         return value
 
-    def validate_job_card(self, value):
 
-        if value.status == JobCard.Status.CANCELLED:
+    def validate_job_card(self, value):
+        if value.status != JobCard.Status.COMPLETED:
             raise serializers.ValidationError(
-                "Payment cannot be added to a cancelled Job Card."
-            )
+            "Payment can only be recorded for a COMPLETED Job Card."
+        )
 
         return value
 
     def validate(self, attrs):
+        
+        payment_method = attrs.get(
+            'payment_method',
+            self.instance.payment_method if self.instance else None
+        )
+
+        payment_reference = attrs.get(
+            'payment_reference',
+            self.instance.payment_reference if self.instance else None
+        )
+
+        if payment_method == 'CASH':
+            attrs['payment_reference'] = None
+
+        else:
+            if not payment_reference or not payment_reference.strip():
+                raise serializers.ValidationError({
+                    'payment_reference': (
+                        'Payment reference is required for this payment method.'
+                    )
+                })
+
+            payment_reference = payment_reference.strip()
+
+            if len(payment_reference) < 12:
+                raise serializers.ValidationError({
+                    'payment_reference': (
+                        'Payment reference must be at least 12 characters long.'
+                    )
+                })
+
+            if len(payment_reference) > 100:
+                raise serializers.ValidationError({
+                    'payment_reference': (
+                        'Payment reference cannot exceed 100 characters.'
+                    )
+                })
+
+            attrs['payment_reference'] = payment_reference
+
 
         job_card = attrs.get('job_card')
 

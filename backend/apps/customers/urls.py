@@ -3,6 +3,7 @@ from django.urls import path
 from .views import (
     CustomerListCreateView,
     CustomerDetailView,
+     CustomerProfileView,
     DeviceListCreateView,
     DeviceDetailView,
 )
@@ -21,6 +22,12 @@ urlpatterns = [
         '<int:pk>/',
         CustomerDetailView.as_view(),
         name='customer-detail'
+    ),
+
+        path(
+        'my-profile/',
+        CustomerProfileView.as_view(),
+        name='customer-profile'
     ),
 
     # Device APIs

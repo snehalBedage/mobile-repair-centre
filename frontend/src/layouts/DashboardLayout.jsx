@@ -63,7 +63,7 @@ function DashboardLayout({ children, role }) {
     "My Estimates",
     "My Payments",
     "My Warranties",
-    "Track Repair",
+    
   ];
 
   const menu =
@@ -102,7 +102,7 @@ function DashboardLayout({ children, role }) {
     "My Estimates": "/my-estimates",
     "My Payments": "/my-payments",
     "My Warranties": "/my-warranties",
-    "Track Repair": "/track-repair",
+    
   };
 
   // =====================================================
@@ -151,7 +151,7 @@ function DashboardLayout({ children, role }) {
       "/my-estimates": "My Estimates",
       "/my-payments": "My Payments",
       "/my-warranties": "My Warranties",
-      "/track-repair": "Track Repair",
+      
     };
 
     return pageTitles[currentPath] || "Dashboard";
@@ -192,7 +192,7 @@ function DashboardLayout({ children, role }) {
       "My Estimates": "▥",
       "My Payments": "▭",
       "My Warranties": "✓",
-      "Track Repair": "⌖",
+     
     };
 
     return icons[item] || "•";

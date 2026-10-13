@@ -1,7 +1,8 @@
 from rest_framework import generics
+from rest_framework.response import Response
 
 from .models import Customer, Device
-from .serializers import CustomerSerializer, DeviceSerializer
+from .serializers import CustomerSerializer, CustomerProfileSerializer, DeviceSerializer
 from .permissions import (
     IsAdminOrStaff,
     IsAdminStaffOrOwnCustomer,
@@ -62,6 +63,53 @@ class CustomerDetailView(generics.RetrieveUpdateAPIView):
 
     def get_permissions(self):
         return [IsAdminStaffOrOwnCustomer()]
+
+
+# =====================================================
+# CUSTOMER PROFILE UPDATE VIEW
+# =====================================================
+
+
+class CustomerProfileView(generics.GenericAPIView):
+    serializer_class = CustomerProfileSerializer
+    http_method_names = ['get', 'put', 'patch', 'head', 'options']
+
+    def get_object(self):
+        user = self.request.user
+
+        if user.role != 'CUSTOMER':
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied(
+                "Only customers can access their profile."
+            )
+
+        return Customer.objects.get(user=user)
+
+    def get(self, request, *args, **kwargs):
+        customer = self.get_object()
+        serializer = self.get_serializer(customer)
+        return Response(serializer.data)
+
+    def patch(self, request, *args, **kwargs):
+        customer = self.get_object()
+        serializer = self.get_serializer(
+            customer,
+            data=request.data,
+            partial=True
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    def put(self, request, *args, **kwargs):
+        customer = self.get_object()
+        serializer = self.get_serializer(
+            customer,
+            data=request.data
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
 
 
 # =====================================================

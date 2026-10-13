@@ -246,9 +246,7 @@ class PaymentListCreateView(APIView):
 
         if serializer.is_valid():
 
-            payment = serializer.save(
-                payment_status=Payment.PaymentStatus.PAID
-            )
+            payment = serializer.save()
 
             create_audit_log(
                 user=request.user,
@@ -266,6 +264,7 @@ class PaymentListCreateView(APIView):
             serializer.errors,
             status=status.HTTP_400_BAD_REQUEST
         )
+
 
 class PaymentDetailView(APIView):
 
@@ -319,6 +318,59 @@ class PaymentDetailView(APIView):
             status=status.HTTP_200_OK
         )
 
+    def patch(self, request, pk):
+
+        payment = self.get_object(pk)
+
+        # Only ADMIN and STAFF can update payment status
+        if request.user.role not in ['ADMIN', 'STAFF']:
+
+            return Response(
+                {
+                    "detail": (
+                        "You do not have permission "
+                        "to update payment status."
+                    )
+                },
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        new_status = request.data.get('payment_status')
+
+        if new_status not in [
+            Payment.PaymentStatus.PAID,
+            Payment.PaymentStatus.FAILED
+        ]:
+
+            return Response(
+                {
+                    "payment_status": (
+                        "Choose PAID or FAILED."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if payment.payment_status != Payment.PaymentStatus.PENDING:
+
+            return Response(
+                {
+                    "detail": (
+                        "Only PENDING payments can be updated."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        payment.payment_status = new_status
+        payment.save(update_fields=['payment_status'])
+
+        serializer = PaymentSerializer(payment)
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_200_OK
+        )
 
 class PaymentReceiptView(APIView):
 

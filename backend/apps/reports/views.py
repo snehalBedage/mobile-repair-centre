@@ -1,4 +1,4 @@
-
+from django.db import models
 from django.db.models import Sum, F
 
 from rest_framework.views import APIView
@@ -31,14 +31,34 @@ class AuditLogListView(APIView):
             .order_by('-created_at')
         )
 
+        # Search by user email, action, or table name
+        search = request.query_params.get('search', '').strip()
+        if search:
+            audit_logs = audit_logs.filter(
+                models.Q(user__email__icontains=search)
+                | models.Q(action__icontains=search)
+                | models.Q(table_name__icontains=search)
+            )
+
+        # Filter by table name
+        table_name = request.query_params.get('table_name', '').strip()
+        if table_name:
+            audit_logs = audit_logs.filter(
+                table_name__iexact=table_name
+            )
+
+        # Filter by action
+        action = request.query_params.get('action', '').strip()
+        if action:
+            audit_logs = audit_logs.filter(
+                action__icontains=action
+            )
+
         serializer = AuditLogSerializer(
             audit_logs,
             many=True
         )
-
         return Response(serializer.data)
-
-
 class DashboardSummaryView(APIView):
     permission_classes = [IsAuthenticated]
 
