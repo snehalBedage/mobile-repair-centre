@@ -424,7 +424,7 @@ function DashboardLayout({ children, role }) {
         <footer className="flex h-12 shrink-0 items-center justify-center border-t border-slate-200 bg-white">
 
           <p className="text-xs text-slate-500">
-            © 2026 Mobile Repair Centre — Repair Management System
+            Mobile Repair Centre — Repair Management System
           </p>
 
         </footer>

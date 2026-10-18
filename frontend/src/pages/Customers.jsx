@@ -36,6 +36,10 @@ function Customers() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalCustomers, setTotalCustomers] = useState(0);
+  const [nextPageUrl, setNextPageUrl] = useState(null);
+  const [previousPageUrl, setPreviousPageUrl] = useState(null);
 
   const [formData, setFormData] = useState({ ...emptyForm });
   const [editData, setEditData] = useState({
@@ -52,12 +56,26 @@ function Customers() {
       setLoading(true);
       setError("");
 
-      const response = await api.get("/customers/", {
-        params: searchValue ? { search: searchValue } : {},
-      });
+     const response = await api.get("/customers/", {
+  params: {
+    ...(searchValue ? { search: searchValue } : {}),
+    page: currentPage,
+  },
+});
 
       const data = response.data;
       setCustomers(Array.isArray(data) ? data : data.results || []);
+      if (Array.isArray(data)) {
+  setCustomers(data);
+  setTotalCustomers(data.length);
+  setNextPageUrl(null);
+  setPreviousPageUrl(null);
+} else {
+  setCustomers(data.results || []);
+  setTotalCustomers(data.count || 0);
+  setNextPageUrl(data.next || null);
+  setPreviousPageUrl(data.previous || null);
+}
     } catch (err) {
       setError(
         err.response?.data?.detail || "Unable to load customers."
@@ -66,20 +84,16 @@ function Customers() {
     } finally {
       setLoading(false);
     }
-  }
+}
+useEffect(() =>
+   {
+  const timer = setTimeout(() => {
+    fetchCustomers(search.trim());
+  }, 400);
 
-  useEffect(() => {
-    fetchCustomers();
-  }, []);
+  return () => clearTimeout(timer);
+}, [search, currentPage]);
 
-  // DEBOUNCED SEARCH
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      fetchCustomers(search.trim());
-    }, 400);
-
-    return () => clearTimeout(timer);
-  }, [search]);
 
   // FORM INPUT HANDLERS
   function handleChange(event) {
@@ -345,11 +359,11 @@ function Customers() {
           )}
         </div>
 
-        <p className="mt-3 text-xs text-slate-500">
-          {customers.length} customer
-          {customers.length !== 1 ? "s" : ""} found
-        </p>
-      </div>
+        <p className="text-xs text-slate-500">
+          Showing {customers.length} customer
+          {customers.length !== 1 ? "s" : ""}
+      </p>
+  </div>
 
       {/* CUSTOMER TABLE */}
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -456,16 +470,41 @@ function Customers() {
                 ))
               )}
             </tbody>
-          </table>
-        </div>
+        </table>
+    </div>
+<div className="border-t border-slate-200 px-5 py-3">
+  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <p className="text-xs text-slate-500">
+      Showing {customers.length} of {totalCustomers} customers
+    </p>
 
-        <div className="border-t border-slate-200 px-5 py-3">
-          <p className="text-xs text-slate-500">
-            Showing {customers.length} customer
-            {customers.length !== 1 ? "s" : ""}
-          </p>
-        </div>
-      </div>
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={() => setCurrentPage((page) => page - 1)}
+        disabled={!previousPageUrl || loading}
+        className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        Previous
+      </button>
+
+      <span className="text-sm text-slate-600">
+        Page {currentPage}
+      </span>
+
+      <button
+        type="button"
+        onClick={() => setCurrentPage((page) => page + 1)}
+        disabled={!nextPageUrl || loading}
+        className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        Next
+      </button>
+    </div>
+  </div>
+</div>
+</div>
+
 
       {/* ADD CUSTOMER MODAL */}
       {showAddForm && (
@@ -785,6 +824,6 @@ function Customers() {
       )}
     </div>
   );
-}
 
+}
 export default Customers;

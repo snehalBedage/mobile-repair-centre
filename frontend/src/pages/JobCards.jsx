@@ -130,6 +130,12 @@ export default function JobCards() {
   const [previousPage, setPreviousPage] = useState(null);
   const [totalJobs, setTotalJobs] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 10;
+
+const totalPages = Math.max(
+  1,
+  Math.ceil(totalJobs / PAGE_SIZE)
+);
 
   const [customers, setCustomers] = useState([]);
   const [devices, setDevices] = useState([]);
@@ -153,12 +159,11 @@ export default function JobCards() {
     setError("");
 
     try {
-      const results = await Promise.all([
-        pageUrl ? api.get(pageUrl) : api.get("job-cards/"),
-        api.get("customers/"),
-        api.get("customers/devices/"),
-        api.get("technicians/"),
-      ]);
+const results = await Promise.all([
+  pageUrl ? api.get(pageUrl) : api.get("job-cards/"),
+  api.get("customers/devices/"),
+  api.get("technicians/"),
+]);
 
       const jobData = results[0].data;
       const pageJobs = getList(jobData);
@@ -175,9 +180,44 @@ export default function JobCards() {
 
       setCurrentPage(page);
 
-      setCustomers(getList(results[1].data));
-      setDevices(getList(results[2].data));
-      setTechnicians(getList(results[3].data));
+     let allCustomers = [];
+let customerUrl = "customers/";
+
+while (customerUrl) {
+  const customerResponse = await api.get(customerUrl);
+  const customerData = customerResponse.data;
+
+  if (Array.isArray(customerData)) {
+    allCustomers = customerData;
+    customerUrl = null;
+  } else {
+    allCustomers = [
+      ...allCustomers,
+      ...(customerData.results || []),
+    ];
+
+    customerUrl = customerData.next || null;
+  }
+}
+setCustomers(allCustomers);
+let allDevices = getList(results[1].data);
+let deviceUrl = results[1].data?.next || null;
+
+while (deviceUrl) {
+  const deviceResponse = await api.get(deviceUrl);
+  const deviceData = deviceResponse.data;
+
+  allDevices = [
+    ...allDevices,
+    ...getList(deviceData),
+  ];
+
+  deviceUrl = deviceData?.next || null;
+}
+
+setDevices(allDevices);
+setTechnicians(getList(results[2].data));
+
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {
@@ -783,9 +823,9 @@ export default function JobCards() {
               Previous
             </button>
 
-            <span className="px-2 text-sm text-slate-600">
-              Page {currentPage}
-            </span>
+            <span className="whitespace-nowrap px-2 text-sm font-medium text-slate-600">
+  Page {currentPage} of {totalPages}
+</span>
 
             <button
               type="button"

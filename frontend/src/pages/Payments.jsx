@@ -1,6 +1,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import api from "../services/api";
+import { getPayments, getJobCards } from "../services/dashboardApi";
 
 const EMPTY_FORM = {
   job_card: "",
@@ -131,7 +132,7 @@ export default function Payments() {
 
   const [form, setForm] = useState(EMPTY_FORM);
 
- 
+
 
 const completedJobCards = useMemo(
   () =>
@@ -161,7 +162,7 @@ const completedJobCards = useMemo(
         (payment) => payment.payment_status === "PENDING"
       );
 
-      
+
       if (hasPendingPayment) {
         return false;
       }
@@ -171,20 +172,16 @@ const completedJobCards = useMemo(
   [jobCards, payments, billingSummaries]
 );
 
- 
+
 const loadData = useCallback(async () => {
   setLoading(true);
   setError("");
 
   try {
-    const [paymentResponse, jobResponse] = await Promise.all([
-      api.get("billing/payments/"),
-      api.get("job-cards/"),
-    ]);
-
-    const loadedPayments = getList(paymentResponse.data);
-    const loadedJobCards = getList(jobResponse.data);
-
+    const [loadedPayments, loadedJobCards] = await Promise.all([
+       getPayments(),
+      getJobCards(),
+    ])
     setPayments(loadedPayments);
     setJobCards(loadedJobCards);
 
@@ -199,10 +196,28 @@ const loadData = useCallback(async () => {
             `billing/job-cards/${job.id}/`
           );
 
-          return [job.id, response.data];
-        } catch {
-          return [job.id, null];
-        }
+      return [job.id, response.data];
+} catch (err) {
+  const message = err.response?.data?.detail;
+
+  if (
+    err.response?.status === 400 &&
+    message ===
+      "Approved estimate not found for this Job Card."
+  ) {
+    // Expected when a completed Job Card has no approved estimate.
+    return [job.id, null];
+  }
+
+  console.error(
+    `Billing summary failed for Job Card ${job.id}:`,
+    err.response?.data || err.message
+  );
+
+  return [job.id, null];
+}
+
+
       })
     );
 
@@ -283,7 +298,7 @@ const loadData = useCallback(async () => {
     setError("");
     setSuccess("");
 
-    
+
     if (
       !form.job_card ||
       (form.payment_method !== "CASH" &&
@@ -540,8 +555,8 @@ const handleUpdatePaymentStatus = async (payment, newStatus) => {
                     </p>
                   )}
                 </div>
-                
-                
+
+
                 {form.payment_method !== "CASH" && (
                   <div>
                   <label

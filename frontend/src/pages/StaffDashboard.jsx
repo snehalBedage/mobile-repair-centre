@@ -1,5 +1,5 @@
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import {
   getCustomers,
@@ -13,27 +13,39 @@ import {
 
 const STATUS_CARDS = [
   { title: "Received", keys: ["RECEIVED"], color: "bg-blue-500" },
+  { title: "Diagnosis", keys: ["DIAGNOSIS"], color: "bg-purple-500" },
   {
-    title: "Diagnosis",
-    keys: ["DIAGNOSIS", "UNDER_DIAGNOSIS"],
-    color: "bg-purple-500",
-  },
-  {
-    title: "Waiting Approval",
-    keys: ["WAITING_APPROVAL", "PENDING_APPROVAL", "ESTIMATE_PENDING"],
+    title: "Estimate / Approval",
+    keys: [
+      "ESTIMATE_PREPARED",
+      "WAITING_FOR_APPROVAL",
+      "APPROVED",
+      "REJECTED",
+    ],
     color: "bg-orange-500",
   },
   {
     title: "Repair In Progress",
-    keys: ["REPAIR_IN_PROGRESS", "IN_PROGRESS", "REPAIRING"],
+    keys: ["REPAIR_IN_PROGRESS"],
     color: "bg-yellow-500",
   },
   {
-    title: "Ready for QC",
-    keys: ["READY_FOR_QC", "QC", "QUALITY_CHECK", "QUALITY_CONTROL"],
+    title: "Quality Check",
+    keys: ["QC", "QC_FAILED"],
     color: "bg-cyan-500",
   },
+  {
+    title: "Repair Required",
+    keys: ["REPAIR_REQUIRED"],
+    color: "bg-rose-500",
+  },
+  {
+    title: "Ready for Delivery",
+    keys: ["READY_FOR_DELIVERY"],
+    color: "bg-indigo-500",
+  },
   { title: "Completed", keys: ["COMPLETED"], color: "bg-emerald-500" },
+  { title: "Cancelled", keys: ["CANCELLED"], color: "bg-red-500" },
 ];
 
 const normalizeStatus = (value) =>
@@ -81,42 +93,54 @@ const isPaid = (payment) =>
   normalizeStatus(payment.payment_status || payment.status) === "PAID";
 
 const isPendingEstimate = (estimate) =>
-  ["PENDING", "PENDING_APPROVAL", "WAITING_APPROVAL"].includes(
-    normalizeStatus(estimate.approval_status)
+  [
+    "PENDING",
+    "PENDING_APPROVAL",
+    "WAITING_APPROVAL",
+    "WAITING_FOR_APPROVAL",
+  ].includes(
+    normalizeStatus(estimate.approval_status || estimate.status)
   );
 
 const getStatusClasses = (status) => {
   const value = normalizeStatus(status);
 
   if (value === "COMPLETED") return "bg-emerald-50 text-emerald-700";
-  if (value === "CANCELLED") return "bg-red-50 text-red-700";
-
-  if (value.includes("APPROVAL") || value.includes("PENDING")) {
+  if (["CANCELLED", "REJECTED"].includes(value))
+    return "bg-red-50 text-red-700";
+  if (value === "READY_FOR_DELIVERY")
+    return "bg-indigo-50 text-indigo-700";
+  if (value.includes("APPROVAL") || value.includes("PENDING"))
     return "bg-orange-50 text-orange-700";
-  }
-
-  if (value.includes("QC") || value.includes("QUALITY")) {
-    return "bg-cyan-50 text-cyan-700";
-  }
-
-  if (value.includes("PROGRESS") || value === "REPAIRING") {
+  if (value.includes("QC")) return "bg-cyan-50 text-cyan-700";
+  if (value.includes("PROGRESS"))
     return "bg-yellow-50 text-yellow-700";
-  }
+  if (value === "REPAIR_REQUIRED")
+    return "bg-rose-50 text-rose-700";
 
   return "bg-blue-50 text-blue-700";
 };
 
 const getLowStock = (part) => {
   const quantity = Number(
-    part.quantity ?? part.stock_quantity ?? part.available_quantity ?? 0
+    part.quantity ??
+      part.stock_quantity ??
+      part.available_quantity ??
+      0
   );
 
   const threshold = Number(
-    part.reorder_level ?? part.minimum_stock ?? part.min_stock ?? 0
+    part.reorder_level ??
+      part.minimum_stock ??
+      part.min_stock ??
+      0
   );
 
   return quantity <= threshold;
 };
+
+const getJobDate = (job) =>
+  job.created_at || job.intake_date || job.updated_at || null;
 
 function StaffDashboard() {
   const [customers, setCustomers] = useState([]);
@@ -129,6 +153,9 @@ function StaffDashboard() {
 
   const [loading, setLoading] = useState(true);
   const [errors, setErrors] = useState([]);
+
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("ALL");
 
   useEffect(() => {
     let active = true;
@@ -159,7 +186,12 @@ function StaffDashboard() {
         const [name, , setter] = requests[index];
 
         if (result.status === "fulfilled") {
-          setter(Array.isArray(result.value) ? result.value : []);
+          if (Array.isArray(result.value)) {
+            setter(result.value);
+          } else {
+            setter([]);
+            failed.push(`${name} (unexpected API response)`);
+          }
         } else {
           setter([]);
           failed.push(name);
@@ -178,16 +210,19 @@ function StaffDashboard() {
     };
   }, []);
 
-  const customerMap = new Map(
-    customers.map((item) => [String(item.id), item])
+  const customerMap = useMemo(
+    () => new Map(customers.map((item) => [String(item.id), item])),
+    [customers]
   );
 
-  const deviceMap = new Map(
-    devices.map((item) => [String(item.id), item])
+  const deviceMap = useMemo(
+    () => new Map(devices.map((item) => [String(item.id), item])),
+    [devices]
   );
 
-  const technicianMap = new Map(
-    technicians.map((item) => [String(item.id), item])
+  const technicianMap = useMemo(
+    () => new Map(technicians.map((item) => [String(item.id), item])),
+    [technicians]
   );
 
   const getCustomerName = (job) => {
@@ -196,7 +231,9 @@ function StaffDashboard() {
     }
 
     return (
-      customerMap.get(String(getId(job.customer)))?.name || "—"
+      customerMap.get(String(getId(job.customer)))?.name ||
+      job.customer_name ||
+      "—"
     );
   };
 
@@ -206,9 +243,13 @@ function StaffDashboard() {
         ? job.device
         : deviceMap.get(String(getId(job.device)));
 
-    return device
-      ? [device.brand, device.model].filter(Boolean).join(" ") || "—"
-      : "—";
+    if (device) {
+      return (
+        [device.brand, device.model].filter(Boolean).join(" ") || "—"
+      );
+    }
+
+    return job.device_name || "—";
   };
 
   const getTechnicianName = (job) => {
@@ -225,16 +266,19 @@ function StaffDashboard() {
         ? job.technician
         : technicianMap.get(String(getId(job.technician)));
 
-    return technician ? getName(technician) : "Not Assigned";
+    return technician
+      ? getName(technician)
+      : job.technician_name || "Not Assigned";
   };
 
   const activeJobCards = jobCards.filter(
     (job) =>
-      !["COMPLETED", "CANCELLED"].includes(normalizeStatus(job.status))
+      !["COMPLETED", "CANCELLED"].includes(
+        normalizeStatus(job.status)
+      )
   ).length;
 
   const pendingEstimates = estimates.filter(isPendingEstimate).length;
-
   const lowStockCount = spareParts.filter(getLowStock).length;
 
   const todaysPayments = payments.filter(
@@ -252,19 +296,12 @@ function StaffDashboard() {
     0
   );
 
-  const recentJobCards = [...jobCards]
-    .sort((a, b) => {
-      const dateA = new Date(
-        a.created_at || a.intake_date || 0
-      ).getTime();
-
-      const dateB = new Date(
-        b.created_at || b.intake_date || 0
-      ).getTime();
-
-      return dateB - dateA;
-    })
-    .slice(0, 5);
+  const repairStatusData = STATUS_CARDS.map((card) => ({
+    ...card,
+    count: jobCards.filter((job) =>
+      card.keys.includes(normalizeStatus(job.status))
+    ).length,
+  }));
 
   const summaryCards = [
     {
@@ -301,6 +338,48 @@ function StaffDashboard() {
     },
   ];
 
+  const sortedJobCards = useMemo(
+    () =>
+      [...jobCards].sort((a, b) => {
+        const dateA = new Date(getJobDate(a) || 0).getTime();
+        const dateB = new Date(getJobDate(b) || 0).getTime();
+        return dateB - dateA;
+      }),
+    [jobCards]
+  );
+
+  const filteredJobCards = sortedJobCards.filter((job) => {
+    const search = searchTerm.trim().toLowerCase();
+
+    const searchableValues = [
+      job.job_card_number,
+      getCustomerName(job),
+      getDeviceName(job),
+      getTechnicianName(job),
+      job.status,
+      job.priority,
+    ];
+
+    const matchesSearch =
+      !search ||
+      searchableValues.some((value) =>
+        String(value || "").toLowerCase().includes(search)
+      );
+
+    const matchesStatus =
+      statusFilter === "ALL" ||
+      normalizeStatus(job.status) === statusFilter;
+
+    return matchesSearch && matchesStatus;
+  });
+
+  const hasActiveFilter =
+    searchTerm.trim().length > 0 || statusFilter !== "ALL";
+
+  const displayedJobCards = hasActiveFilter
+    ? filteredJobCards
+    : filteredJobCards.slice(0, 5);
+
   return (
     <>
       <div className="mb-6">
@@ -313,17 +392,28 @@ function StaffDashboard() {
       </div>
 
       {errors.length > 0 && (
-        <div className="mb-5 rounded-lg border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-700">
-          Unable to load: {errors.join(", ")}. Check the API permissions and endpoints.
+        <div
+          role="alert"
+          className="mb-5 rounded-lg border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-700"
+        >
+          <p className="font-semibold">
+            Some dashboard data could not be loaded.
+          </p>
+          <p className="mt-1">
+            Check these API requests: {errors.join(", ")}.
+          </p>
         </div>
       )}
 
+      {/* Summary Cards */}
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
         {summaryCards.map((card) => (
           <div
             key={card.title}
             className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"
           >
+            <div className="h-1 bg-blue-600" />
+
             <div className="flex items-center justify-between p-5">
               <div>
                 <p className="text-sm font-medium text-slate-500">
@@ -349,6 +439,7 @@ function StaffDashboard() {
         ))}
       </div>
 
+      {/* Repair Status Cards and Today's Payments; no graph */}
       <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-3">
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm xl:col-span-2">
           <div className="border-b border-slate-200 px-5 py-4">
@@ -360,36 +451,32 @@ function StaffDashboard() {
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-4 p-5 sm:grid-cols-3">
-            {STATUS_CARDS.map((card) => {
-              const count = jobCards.filter((job) =>
-                card.keys.includes(normalizeStatus(job.status))
-              ).length;
-
-              return (
-                <div
-                  key={card.title}
-                  className="rounded-lg border border-slate-100 bg-slate-50 p-4"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-xs font-medium text-slate-500">
-                      {card.title}
-                    </p>
-                    <span className={`h-2 w-2 rounded-full ${card.color}`} />
-                  </div>
-                  <p className="mt-2 text-xl font-bold text-slate-900">
-                    {loading ? "..." : count}
+          <div className="grid grid-cols-1 gap-3 p-5 sm:grid-cols-2 lg:grid-cols-3">
+            {repairStatusData.map((card) => (
+              <div
+                key={card.title}
+                className="rounded-lg border border-slate-100 bg-slate-50 p-4"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-medium text-slate-500">
+                    {card.title}
                   </p>
+                  <span
+                    className={`h-2.5 w-2.5 shrink-0 rounded-full ${card.color}`}
+                  />
                 </div>
-              );
-            })}
+                <p className="mt-2 text-xl font-bold text-slate-900">
+                  {loading ? "..." : card.count}
+                </p>
+              </div>
+            ))}
           </div>
         </div>
 
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-200 px-5 py-4">
             <h3 className="text-sm font-bold text-slate-900">
-              Today&apos;s Payments
+              Today's Payments
             </h3>
             <p className="mt-1 text-xs text-slate-500">
               Payment summary
@@ -405,7 +492,9 @@ function StaffDashboard() {
             </p>
 
             <div className="mt-5 border-t border-slate-200 pt-4">
-              <p className="text-xs text-slate-500">Transactions</p>
+              <p className="text-xs text-slate-500">
+                Paid Transactions Today
+              </p>
               <p className="mt-2 text-lg font-semibold text-slate-900">
                 {loading ? "..." : todaysPayments.length}
               </p>
@@ -414,13 +503,110 @@ function StaffDashboard() {
         </div>
       </div>
 
+      {/* Independent Search and Filter Card */}
+      <div className="mt-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="mb-4">
+          <h3 className="text-sm font-bold text-slate-900">
+            Search Job Cards
+          </h3>
+          <p className="mt-1 text-xs text-slate-500">
+            Find repairs by job card number, customer, device or technician.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div className="md:col-span-2">
+            <label
+              htmlFor="staff-job-search"
+              className="mb-1.5 block text-xs font-medium text-slate-600"
+            >
+              Search
+            </label>
+
+            <div className="relative">
+              <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  className="h-4 w-4"
+                  aria-hidden="true"
+                >
+                  <circle cx="11" cy="11" r="7" />
+                  <path d="m20 20-4-4" />
+                </svg>
+              </span>
+
+              <input
+                id="staff-job-search"
+                name="jobSearch"
+                type="search"
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder="Enter job card, customer, device..."
+                className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label
+              htmlFor="staff-status-filter"
+              className="mb-1.5 block text-xs font-medium text-slate-600"
+            >
+              Filter by Status
+            </label>
+
+            <select
+              id="staff-status-filter"
+              name="jobStatus"
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            >
+              <option value="ALL">All statuses</option>
+              {STATUS_CARDS.map((card) =>
+                card.keys.map((status) => (
+                  <option key={status} value={status}>
+                    {status.replace(/_/g, " ")}
+                  </option>
+                ))
+              )}
+            </select>
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
+          <p className="text-xs text-slate-500">
+            {loading
+              ? "Loading records..."
+              : `${filteredJobCards.length} matching job card(s)`}
+          </p>
+
+          <button
+            type="button"
+            disabled={!hasActiveFilter}
+            onClick={() => {
+              setSearchTerm("");
+              setStatusFilter("ALL");
+            }}
+            className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Clear Filters
+          </button>
+        </div>
+      </div>
+
+      {/* Recent Job Cards — separate card */}
       <div className="mt-5 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 px-5 py-4">
           <h3 className="text-sm font-bold text-slate-900">
             Recent Job Cards
           </h3>
           <p className="mt-1 text-xs text-slate-500">
-            Latest repair jobs
+            Latest repair job records
           </p>
         </div>
 
@@ -449,23 +635,26 @@ function StaffDashboard() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-5 py-10 text-center text-slate-500">
+                  <td
+                    colSpan={6}
+                    className="px-5 py-10 text-center text-slate-500"
+                  >
                     Loading job cards...
                   </td>
                 </tr>
-              ) : recentJobCards.length === 0 ? (
+              ) : displayedJobCards.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-5 py-10 text-center">
                     <p className="text-sm font-medium text-slate-500">
-                      No job cards available
+                      No matching job cards found
                     </p>
                     <p className="mt-1 text-xs text-slate-400">
-                      New repair jobs will appear here.
+                      Try another search term or status.
                     </p>
                   </td>
                 </tr>
               ) : (
-                recentJobCards.map((job) => (
+                displayedJobCards.map((job) => (
                   <tr
                     key={job.id}
                     className="border-b border-slate-100 last:border-0 hover:bg-slate-50"
@@ -498,6 +687,15 @@ function StaffDashboard() {
             </tbody>
           </table>
         </div>
+
+        {!loading &&
+          !hasActiveFilter &&
+          filteredJobCards.length > 5 && (
+            <p className="border-t border-slate-100 px-5 py-3 text-center text-xs text-slate-500">
+              Showing the 5 most recent job cards. Use the Search Job Cards
+              card above to find other records.
+            </p>
+          )}
       </div>
     </>
   );

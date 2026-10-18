@@ -507,7 +507,7 @@ class PaymentReceiptView(APIView):
             [
                 Paragraph("<b>Receipt No.</b>", normal_style),
                 Paragraph(
-                    payment.payment_reference,
+                    str(payment.payment_reference or f"PAY-{payment.id}"),
                     normal_style
                 ),
             ],

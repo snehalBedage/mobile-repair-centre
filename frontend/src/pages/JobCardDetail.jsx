@@ -599,9 +599,6 @@ console.log("Allowed next statuses:", allowedStatuses);
           </Section>
         </div>
 
-        <footer className="py-8 text-center text-xs text-slate-400">
-          © 2026 Mobile Repair Centre — Repair Management System
-        </footer>
 
         {showQR && trackingUrl && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4" onClick={() => setShowQR(false)}>

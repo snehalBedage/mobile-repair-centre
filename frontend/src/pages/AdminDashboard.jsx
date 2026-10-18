@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 
 import {
@@ -11,36 +12,72 @@ import {
   getTechnicians,
 } from "../services/dashboardApi";
 
-const STATUS_CARDS = [
+// Backend JobCard status values
+const STATUS_CHART_ITEMS = [
   {
     title: "Received",
-    keys: ["RECEIVED"],
-    color: "bg-blue-500",
+    statuses: ["RECEIVED"],
+    color: "#2563EB",
   },
   {
     title: "Diagnosis",
-    keys: ["DIAGNOSIS", "UNDER_DIAGNOSIS"],
-    color: "bg-purple-500",
+    statuses: ["DIAGNOSIS"],
+    color: "#8B5CF6",
   },
   {
-    title: "Waiting Approval",
-    keys: ["WAITING_APPROVAL", "PENDING_APPROVAL", "ESTIMATE_PENDING"],
-    color: "bg-orange-500",
+    title: "Estimate Prepared",
+    statuses: ["ESTIMATE_PREPARED"],
+    color: "#A855F7",
+  },
+  {
+    title: "Waiting for Approval",
+    statuses: ["WAITING_FOR_APPROVAL"],
+    color: "#F59E0B",
+  },
+  {
+    title: "Approved",
+    statuses: ["APPROVED"],
+    color: "#0D9488",
   },
   {
     title: "Repair In Progress",
-    keys: ["REPAIR_IN_PROGRESS", "IN_PROGRESS", "REPAIRING"],
-    color: "bg-yellow-500",
+    statuses: ["REPAIR_IN_PROGRESS"],
+    color: "#EAB308",
   },
   {
-    title: "Ready for QC",
-    keys: ["READY_FOR_QC", "QC", "QUALITY_CHECK", "QUALITY_CONTROL"],
-    color: "bg-cyan-500",
+    title: "Quality Check",
+    statuses: ["QC"],
+    color: "#06B6D4",
+  },
+  {
+    title: "QC Failed",
+    statuses: ["QC_FAILED"],
+    color: "#F97316",
+  },
+  {
+    title: "Repair Required",
+    statuses: ["REPAIR_REQUIRED"],
+    color: "#64748B",
+  },
+  {
+    title: "Ready for Delivery",
+    statuses: ["READY_FOR_DELIVERY"],
+    color: "#6366F1",
   },
   {
     title: "Completed",
-    keys: ["COMPLETED"],
-    color: "bg-emerald-500",
+    statuses: ["COMPLETED"],
+    color: "#16A34A",
+  },
+  {
+    title: "Rejected",
+    statuses: ["REJECTED"],
+    color: "#DC2626",
+  },
+  {
+    title: "Cancelled",
+    statuses: ["CANCELLED"],
+    color: "#991B1B",
   },
 ];
 
@@ -102,7 +139,7 @@ const getStatusClasses = (status) => {
     return "bg-emerald-50 text-emerald-700";
   }
 
-  if (value === "CANCELLED") {
+  if (value === "CANCELLED" || value === "REJECTED") {
     return "bg-red-50 text-red-700";
   }
 
@@ -110,11 +147,11 @@ const getStatusClasses = (status) => {
     return "bg-orange-50 text-orange-700";
   }
 
-  if (value.includes("QC") || value.includes("QUALITY")) {
+  if (value.includes("QC")) {
     return "bg-cyan-50 text-cyan-700";
   }
 
-  if (value.includes("PROGRESS") || value === "REPAIRING") {
+  if (value.includes("PROGRESS")) {
     return "bg-yellow-50 text-yellow-700";
   }
 
@@ -142,7 +179,7 @@ function AdminDashboard() {
       setError("");
       setPartialError("");
 
-      // Summary is essential. Other sections load independently.
+      // Load dashboard summary
       try {
         const data = await getDashboardSummary();
 
@@ -157,6 +194,7 @@ function AdminDashboard() {
         }
       }
 
+      // Load the remaining dashboard sections independently
       const requests = [
         ["job cards", getJobCards, setJobCards],
         ["estimates", getEstimates, setEstimates],
@@ -182,6 +220,7 @@ function AdminDashboard() {
         } else {
           setter([]);
           failedSections.push(sectionName);
+
           console.error(
             `Unable to load ${sectionName}:`,
             result.reason
@@ -191,7 +230,9 @@ function AdminDashboard() {
 
       if (failedSections.length > 0) {
         setPartialError(
-          `Unable to load: ${failedSections.join(", ")}. Please check those API endpoints.`
+          `Unable to load: ${failedSections.join(
+            ", "
+          )}. Please check those API endpoints.`
         );
       }
 
@@ -205,6 +246,7 @@ function AdminDashboard() {
     };
   }, []);
 
+  // Maps used to display related names in recent job cards
   const customerMap = new Map(
     customers.map((customer) => [
       String(customer.id),
@@ -242,7 +284,9 @@ function AdminDashboard() {
     const device = job.device;
 
     if (device && typeof device === "object") {
-      return [device.brand, device.model].filter(Boolean).join(" ") || "—";
+      return (
+        [device.brand, device.model].filter(Boolean).join(" ") || "—"
+      );
     }
 
     const record = deviceMap.get(String(getId(device)));
@@ -252,29 +296,27 @@ function AdminDashboard() {
       : "—";
   };
 
-  
-const getTechnicianName = (job) => {
-  const technician = job.technician;
+  const getTechnicianName = (job) => {
+    const technician = job.technician;
 
-  // Technician assign nasel tar
-  if (
-    technician === null ||
-    technician === undefined ||
-    technician === ""
-  ) {
-    return "Not Assigned";
-  }
+    if (
+      technician === null ||
+      technician === undefined ||
+      technician === ""
+    ) {
+      return "Not Assigned";
+    }
 
-  // API madhun technician object ala tar
-  if (typeof technician === "object") {
-    return getName(technician, "Not Assigned");
-  }
+    if (typeof technician === "object") {
+      return getName(technician, "Not Assigned");
+    }
 
-  // API madhun technician ID ala tar
-  const record = technicianMap.get(String(technician));
+    const record = technicianMap.get(String(technician));
 
-  return record?.name || "Not Assigned";
-};
+    return record?.name || "Not Assigned";
+  };
+
+  // Dashboard summary calculations
   const activeJobCards = jobCards.filter(
     (job) =>
       !["COMPLETED", "CANCELLED"].includes(
@@ -286,17 +328,15 @@ const getTechnicianName = (job) => {
     isPendingEstimate
   ).length;
 
-  const lowStockCount =
-    summary?.low_stock_parts ??
-    0;
+  const lowStockCount = summary?.low_stock_parts ?? 0;
 
   const todaysPayments = payments.filter(
     (payment) =>
       isPaid(payment) &&
       isToday(
         payment.payment_date ||
-        payment.paid_at ||
-        payment.created_at
+          payment.paid_at ||
+          payment.created_at
       )
   );
 
@@ -319,6 +359,37 @@ const getTechnicianName = (job) => {
       return dateB - dateA;
     })
     .slice(0, 5);
+
+  // Count actual job cards for each backend status
+  const repairStatusData = STATUS_CHART_ITEMS.map((item) => ({
+    ...item,
+    count: jobCards.filter((job) =>
+      item.statuses.includes(normalizeStatus(job.status))
+    ).length,
+  }));
+
+  const repairStatusTotal = repairStatusData.reduce(
+    (total, item) => total + item.count,
+    0
+  );
+
+  // Build the doughnut chart from actual status counts
+  let currentPercentage = 0;
+
+  const statusGradient =
+    repairStatusTotal === 0
+      ? "#E2E8F0 0% 100%"
+      : repairStatusData
+          .filter((item) => item.count > 0)
+          .map((item) => {
+            const start = currentPercentage;
+
+            currentPercentage +=
+              (item.count / repairStatusTotal) * 100;
+
+            return `${item.color} ${start}% ${currentPercentage}%`;
+          })
+          .join(", ");
 
   const displayValue = (value) => {
     if (loading) return "...";
@@ -415,8 +486,9 @@ const getTechnicianName = (job) => {
         ))}
       </div>
 
-      {/* REPAIR STATUS + TODAY'S PAYMENTS */}
+      {/* REPAIR STATUS CHART + TODAY'S PAYMENTS */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 mt-5">
+        {/* DOUGHNUT CHART */}
         <div className="xl:col-span-2 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-200">
             <h3 className="text-sm font-bold text-slate-900">
@@ -428,36 +500,77 @@ const getTechnicianName = (job) => {
             </p>
           </div>
 
-          <div className="p-5 grid grid-cols-2 sm:grid-cols-3 gap-4">
-            {STATUS_CARDS.map((card) => {
-              const count = jobCards.filter((job) =>
-                card.keys.includes(normalizeStatus(job.status))
-              ).length;
+          <div className="p-5 sm:p-6">
+            {loading ? (
+              <div className="min-h-52 flex items-center justify-center text-sm text-slate-500">
+                Loading repair status chart...
+              </div>
+            ) : (
+              <div className="flex flex-col md:flex-row items-center gap-8">
+                {/* Doughnut */}
+                <div className="relative shrink-0">
+                  <div
+                    className="w-48 h-48 sm:w-52 sm:h-52 rounded-full"
+                    style={{
+                      background: `conic-gradient(from -90deg, ${statusGradient})`,
+                    }}
+                    role="img"
+                    aria-label={`Repair status chart with ${repairStatusTotal} job cards`}
+                  />
 
-              return (
-                <div
-                  key={card.title}
-                  className="bg-slate-50 rounded-lg p-4 border border-slate-100"
-                >
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs font-medium text-slate-500">
-                      {card.title}
-                    </p>
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-full bg-white flex flex-col items-center justify-center shadow-sm">
+                      <span className="text-3xl font-bold text-slate-900">
+                        {repairStatusTotal}
+                      </span>
 
-                    <span
-                      className={`w-2 h-2 rounded-full ${card.color}`}
-                    />
+                      <span className="text-xs text-slate-500 mt-1">
+                        Total Jobs
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Status legend */}
+                <div className="w-full flex-1">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-4">
+                    {repairStatusData.map((item) => (
+                      <div
+                        key={item.title}
+                        className="flex items-center justify-between gap-3"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span
+                            className="w-3 h-3 rounded-full shrink-0"
+                            style={{
+                              backgroundColor: item.color,
+                            }}
+                          />
+
+                          <span className="text-sm text-slate-600">
+                            {item.title}
+                          </span>
+                        </div>
+
+                        <span className="text-sm font-semibold text-slate-900">
+                          {item.count}
+                        </span>
+                      </div>
+                    ))}
                   </div>
 
-                  <p className="text-xl font-bold text-slate-900 mt-2">
-                    {displayValue(count)}
-                  </p>
+                  {repairStatusTotal === 0 && (
+                    <p className="text-xs text-slate-500 mt-5">
+                      No repair job data available yet.
+                    </p>
+                  )}
                 </div>
-              );
-            })}
+              </div>
+            )}
           </div>
         </div>
 
+        {/* TODAY'S PAYMENTS */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-200">
             <h3 className="text-sm font-bold text-slate-900">
@@ -592,7 +705,10 @@ const getTechnicianName = (job) => {
                       <span
                         className={`inline-block rounded-full px-2.5 py-1 text-xs font-semibold ${getStatusClasses(job.status)}`}
                       >
-                        {String(job.status || "Unknown").replace(/_/g, " ")}
+                        {String(job.status || "Unknown").replace(
+                          /_/g,
+                          " "
+                        )}
                       </span>
                     </td>
 

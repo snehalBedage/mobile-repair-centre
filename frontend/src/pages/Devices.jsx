@@ -6,6 +6,8 @@ export default function Devices() {
   const [devices, setDevices] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [search, setSearch] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const devicesPerPage = 10;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -33,26 +35,47 @@ export default function Devices() {
     setError("");
 
     try {
-      const [deviceResponse, customerResponse] = await Promise.all([
-        api.get("customers/devices/"),
-        api.get("customers/"),
-      ]);
+        let allDevices = [];
+        let deviceUrl = "customers/devices/";
 
-      const deviceData = deviceResponse.data;
-      const customerData = customerResponse.data;
+while (deviceUrl) {
+  const deviceResponse = await api.get(deviceUrl);
+  const deviceData = deviceResponse.data;
 
-      setDevices(
-        Array.isArray(deviceData)
-          ? deviceData
-          : deviceData.results || []
-      );
+  if (Array.isArray(deviceData)) {
+    allDevices = deviceData;
+    deviceUrl = null;
+  } else {
+    allDevices = [
+      ...allDevices,
+      ...(deviceData.results || []),
+    ];
 
-      setCustomers(
-        Array.isArray(customerData)
-          ? customerData
-          : customerData.results || []
-      );
-    } catch (err) {
+    deviceUrl = deviceData.next || null;
+  }
+}
+let allCustomers = [];
+let customerUrl = "customers/";
+
+while (customerUrl) {
+  const customerResponse = await api.get(customerUrl);
+  const customerData = customerResponse.data;
+
+  if (Array.isArray(customerData)) {
+    allCustomers = customerData;
+    customerUrl = null;
+  } else {
+    allCustomers = [
+      ...allCustomers,
+      ...(customerData.results || []),
+    ];
+
+    customerUrl = customerData.next || null;
+  }
+}     setDevices(allDevices);
+
+      setCustomers(allCustomers);
+  } catch (err) {
       setError(
         err.response?.data?.detail ||
           "Unable to load devices. Please check the backend connection."
@@ -216,6 +239,16 @@ export default function Devices() {
 
     return searchableText.includes(search.trim().toLowerCase());
   });
+  const totalPages = Math.ceil(
+  filteredDevices.length / devicesPerPage
+);
+
+const startIndex = (currentPage - 1) * devicesPerPage;
+
+const paginatedDevices = filteredDevices.slice(
+  startIndex,
+  startIndex + devicesPerPage
+);
 
   function formatCondition(condition) {
     if (!condition) return "—";
@@ -306,7 +339,10 @@ export default function Devices() {
           <input
             type="text"
             value={search}
-            onChange={(event) => setSearch(event.target.value)}
+            onChange={(event) => {
+                setSearch(event.target.value);
+                 setCurrentPage(1);
+                  }}
             placeholder="Search by ID, brand, model, IMEI..."
             aria-label="Search devices"
             className="w-full rounded-lg border border-slate-300 bg-slate-50 py-3 pl-11 pr-10 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100"
@@ -315,7 +351,10 @@ export default function Devices() {
           {search && (
             <button
               type="button"
-              onClick={() => setSearch("")}
+              onClick={() => {
+                setSearch("");
+                setCurrentPage(1);
+                }}
               aria-label="Clear search"
               className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md px-2 py-1 text-lg leading-none text-slate-400 hover:bg-slate-200 hover:text-slate-700"
             >
@@ -364,7 +403,7 @@ export default function Devices() {
 
                 <tbody className="divide-y divide-slate-100">
                   {filteredDevices.length > 0 ? (
-                    filteredDevices.map((device) => (
+                    paginatedDevices.map((device) => (
                       <tr
                         key={device.id}
                         className="transition hover:bg-slate-50"
@@ -431,11 +470,46 @@ export default function Devices() {
               </table>
             </div>
 
-            <div className="border-t border-slate-200 px-5 py-3">
-              <p className="text-xs text-slate-500">
-                Showing {filteredDevices.length} of {devices.length} devices
-              </p>
-            </div>
+            <div className="flex flex-col gap-3 border-t border-slate-200 px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
+  <p className="text-xs text-slate-500">
+    Showing{" "}
+    {filteredDevices.length === 0 ? 0 : startIndex + 1}
+    {" - "}
+    {Math.min(startIndex + devicesPerPage, filteredDevices.length)}
+    {" of "}
+    {filteredDevices.length} devices
+  </p>
+
+  <div className="flex items-center gap-2">
+    <button
+      type="button"
+      onClick={() =>
+        setCurrentPage((page) => Math.max(1, page - 1))
+      }
+      disabled={currentPage === 1}
+      className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+    >
+      Previous
+    </button>
+
+    <span className="text-sm text-slate-600">
+      Page {currentPage} of {Math.max(totalPages, 1)}
+    </span>
+
+    <button
+      type="button"
+      onClick={() =>
+        setCurrentPage((page) =>
+          Math.min(Math.max(totalPages, 1), page + 1)
+        )
+      }
+      disabled={currentPage >= totalPages || totalPages === 0}
+      className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+    >
+      Next
+    </button>
+  </div>
+</div>
           </>
         )}
       </div>
