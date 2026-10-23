@@ -172,51 +172,55 @@ function AdminDashboard() {
   const [partialError, setPartialError] = useState("");
 
   useEffect(() => {
-    let isMounted = true;
+  let isMounted = true;
 
-    const fetchDashboardData = async () => {
-      setLoading(true);
-      setError("");
-      setPartialError("");
+  const fetchDashboardData = async () => {
+    setLoading(true);
+    setError("");
+    setPartialError("");
 
-      // Load dashboard summary
-      try {
-        const data = await getDashboardSummary();
+    const requests = [
+      ["job cards", getJobCards, setJobCards],
+      ["estimates", getEstimates, setEstimates],
+      ["payments", getPayments, setPayments],
+      ["customers", getCustomers, setCustomers],
+      ["devices", getDevices, setDevices],
+      ["technicians", getTechnicians, setTechnicians],
+    ];
 
-        if (isMounted) {
-          setSummary(data);
-        }
-      } catch (err) {
-        if (isMounted) {
-          setError(
-            err.message || "Unable to load dashboard summary."
-          );
-        }
-      }
-
-      // Load the remaining dashboard sections independently
-      const requests = [
-        ["job cards", getJobCards, setJobCards],
-        ["estimates", getEstimates, setEstimates],
-        ["payments", getPayments, setPayments],
-        ["customers", getCustomers, setCustomers],
-        ["devices", getDevices, setDevices],
-        ["technicians", getTechnicians, setTechnicians],
+    try {
+      // Start summary and all dashboard requests together.
+      const allPromises = [
+        getDashboardSummary(),
+        ...requests.map(([, request]) => request()),
       ];
 
-      const results = await Promise.allSettled(
-        requests.map(([, request]) => request())
-      );
+      const results = await Promise.allSettled(allPromises);
 
       if (!isMounted) return;
 
+      // Handle dashboard summary.
+      const summaryResult = results[0];
+
+      if (summaryResult.status === "fulfilled") {
+        setSummary(summaryResult.value);
+      } else {
+        setError(
+          summaryResult.reason?.message ||
+            "Unable to load dashboard summary."
+        );
+      }
+
+      // Handle the remaining dashboard sections.
       const failedSections = [];
 
-      results.forEach((result, index) => {
-        const [sectionName, , setter] = requests[index];
+      requests.forEach(([sectionName, , setter], index) => {
+        const result = results[index + 1];
 
         if (result.status === "fulfilled") {
-          setter(Array.isArray(result.value) ? result.value : []);
+          setter(
+            Array.isArray(result.value) ? result.value : []
+          );
         } else {
           setter([]);
           failedSections.push(sectionName);
@@ -235,16 +239,25 @@ function AdminDashboard() {
           )}. Please check those API endpoints.`
         );
       }
+    } catch (err) {
+      if (isMounted) {
+        setError(
+          err.message || "Unable to load dashboard."
+        );
+      }
+    } finally {
+      if (isMounted) {
+        setLoading(false);
+      }
+    }
+  };
 
-      setLoading(false);
-    };
+  fetchDashboardData();
 
-    fetchDashboardData();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+  return () => {
+    isMounted = false;
+  };
+}, []);
 
   // Maps used to display related names in recent job cards
   const customerMap = new Map(

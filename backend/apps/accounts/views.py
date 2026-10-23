@@ -6,6 +6,7 @@ from django.core.mail import send_mail
 from django.db.models import Q
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
+from django.conf import settings
 
 from rest_framework import status
 from rest_framework.generics import ListCreateAPIView
@@ -84,9 +85,9 @@ class ForgotPasswordView(APIView):
                 token = default_token_generator.make_token(user)
 
                 reset_link = (
-                    f"http://localhost:5173/reset-password/{uid}/{token}/"
+                     f"{settings.FRONTEND_URL.rstrip('/')}"
+                     f"/reset-password/{uid}/{token}/"
                 )
-
                 send_mail(
                     subject="Password Reset - Mobile Repair Centre",
                     message=f"""
