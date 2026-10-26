@@ -16,7 +16,7 @@ const getResults = (data) => {
 // Fetch all pages when the API uses pagination
 const getAllResults = async (url) => {
   let allResults = [];
-  let nextUrl = url;
+   let nextUrl = `${url}${url.includes("?") ? "&" : "?"}page_size=500`;
 
   while (nextUrl) {
     const response = await api.get(nextUrl);

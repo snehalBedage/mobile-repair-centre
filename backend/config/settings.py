@@ -130,6 +130,8 @@ DATABASES = {
         "HOST": os.getenv("DB_HOST", "localhost"),
         "PORT": os.getenv("DB_PORT", "3306"),
         "OPTIONS": DATABASE_OPTIONS,
+        "CONN_MAX_AGE": 600,
+        "CONN_HEALTH_CHECKS": True,
     }
 }
 
@@ -239,10 +241,7 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.IsAuthenticated",
     ),
-    "DEFAULT_PAGINATION_CLASS": (
-        "rest_framework.pagination.PageNumberPagination"
-    ),
-    "PAGE_SIZE": 10,
+        "DEFAULT_PAGINATION_CLASS": "config.pagination.StandardPagination",
 }
 
 
@@ -271,15 +270,24 @@ AUTH_USER_MODEL = "accounts.User"
 # --------------------------------------------------
 
 CORS_ALLOWED_ORIGINS = [
-    origin.strip()
+    origin.strip().rstrip("/")
     for origin in os.getenv(
         "CORS_ALLOWED_ORIGINS",
-        "http://localhost:5173,http://127.0.0.1:5173",
+        (
+            "http://localhost:5173,"
+            "http://127.0.0.1:5173,"
+            "http://localhost:5174,"
+            "http://127.0.0.1:5174"
+        ),
     ).split(",")
     if origin.strip()
 ]
 
+# Production frontend URL
+PRODUCTION_FRONTEND_URL = "https://mobile-repair-centre.vercel.app"
 
+if PRODUCTION_FRONTEND_URL not in CORS_ALLOWED_ORIGINS:
+    CORS_ALLOWED_ORIGINS.append(PRODUCTION_FRONTEND_URL)
 # --------------------------------------------------
 # CSRF and Frontend Configuration
 # --------------------------------------------------
